@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prediction de Crise Cardiaque</title>
+</head>
+<body>
+    <h1>Prediction de Crise Cardiaque</h1>
+    <form id="predictionForm">
+        <input type="number" id="time" placeholder="Time" required>
+        <input type="number" id="ejection_fraction" placeholder="Ejection Fraction" required>
+        <input type="number" id="serum_creatinine" placeholder="Serum Creatinine" required>
+        <button type="submit">Prédire</button>
+    </form>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById("predictionForm").onsubmit = async function(event) {
+            event.preventDefault();
+            let time = document.getElementById("time").value;
+            let ejection_fraction = document.getElementById("ejection_fraction").value;
+            let serum_creatinine = document.getElementById("serum_creatinine").value;
+
+            let response = await fetch(`/heart_attack?time=${time}&ejection_fraction=${ejection_fraction}&serum_creatinine=${serum_creatinine}`);
+            let result = await response.json();
+            document.getElementById("result").innerText = result.survived ? "Survied" : "Not survied";
+        }
+    </script>
+</body>
+</html>
