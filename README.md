@@ -1,31 +1,54 @@
+# Prédiction de crise cardiaque : API et supervision
 
-1. **Installation des Prérequis**:
-   - Installez Docker sur votre machine.
-   - Assurez-vous que Python est installé.
-   - Choisissez un IDE, comme PyCharm ou VSCode, et installez-le.
+Un modèle de prédiction mis en service, et surtout **surveillé**. Trois conteneurs : l'API qui sert le modèle, Prometheus qui collecte, Grafana qui affiche.
 
-2. **Création de l'Image Docker pour l'API de Prédiction de Crise Cardiaque**:
-   - Ouvrez un terminal et naviguez jusqu'au dossier de votre projet.
-   - Exécutez la commande suivante pour construire l'image Docker :
-     ```
-     docker build -t heart_attack_prediction_api .
-     ```
+Le sujet du dépôt n'est pas le modèle — il est entraîné ailleurs et chargé depuis un fichier. Le sujet, c'est ce qui vient après : comment on expose une prédiction, et comment on sait qu'elle continue de bien se comporter une fois en production.
 
-3. **Démarrage de l'Application en Mode Développement**:
-   - Pour un débogage facile, il est recommandé de démarrer l'application via votre IDE (PyCharm ou VSCode).
+![Répartition des prédictions](snapshots/survie_not_survived.png)
 
-4. **Démarrage de Prometheus et Grafana**:
-   - Exécutez la commande suivante pour démarrer Prometheus et Grafana :
-     ```
-     docker compose up -d
-     ```
-   - Cette configuration est prête à fonctionner avec l'application lancée en mode développement.
+## L'architecture
 
-5. **Accès à Prometheus et Grafana**:
-   - Ouvrez un navigateur et accédez à Prometheus sur le port 9090.
-   - Pour Grafana, accédez au port 3000. Utilisez "admin" comme nom d'utilisateur et "grafana" comme mot de passe.
+| Composant | Rôle |
+| --- | --- |
+| **API** | Charge le modèle sérialisé, expose la prédiction, publie ses métriques |
+| **Prometheus** | Interroge l'API à intervalle régulier et stocke les séries |
+| **Grafana** | Branché sur Prometheus, affiche l'évolution |
+| **Docker Compose** | Monte les trois ensemble |
 
-6. **Surveillance des Métriques**:
-   - Une fois dans Grafana, vous pouvez choisir les métriques à suivre, comme `not_survived_total` et `survived_total`.
+## Ce qui est mesuré
 
-En suivant ces étapes, vous serez en mesure de configurer et de surveiller efficacement votre application de prédiction de crises cardiaques, en utilisant Docker pour la gestion des conteneurs, Prometheus pour la surveillance des métriques, et Grafana pour la visualisation des données.
+Deux compteurs Prometheus, déclarés dans `metrics.py` : le nombre de prédictions « survie » et le nombre de prédictions « non-survie », exposés sur un point de terminaison ASGI dédié.
+
+C'est volontairement simple, et c'est exactement le bon premier réflexe. Surveiller la **distribution des prédictions** est le moyen le plus direct de détecter une dérive : si le modèle se met soudain à prédire 90 % de non-survie alors qu'il tournait à 40 %, quelque chose a changé — les données d'entrée, un champ mal rempli en amont, ou la population elle-même. On le voit sans avoir besoin des vraies étiquettes, qui arrivent toujours trop tard.
+
+## Contenu du dépôt
+
+| Fichier | Rôle |
+| --- | --- |
+| `api_heart_attack_prediction.py` | L'API et le point de prédiction |
+| `metrics.py` | Compteurs Prometheus |
+| `heart_attack_prediction_model.joblib` | Modèle entraîné |
+| `static/index.html` | Formulaire de saisie |
+| `Dockerfile` | Image de l'API |
+| `compose.yaml` | API, Prometheus et Grafana |
+| `prometheus/prometheus.yml` | Cible de collecte |
+| `grafana/datasource.yml` | Source de données pré-configurée |
+
+## Mise en route
+
+```bash
+docker build -t heart_attack_prediction_api .
+docker compose up -d
+```
+
+- L'API et son formulaire : `http://localhost:8000`
+- Prometheus : `http://localhost:9090`
+- Grafana : `http://localhost:3000`
+
+La source de données Grafana étant provisionnée, il n'y a qu'à créer le tableau de bord sur les deux compteurs.
+
+## Ce qui manquerait en production
+
+Deux compteurs suffisent à voir une dérive grossière, pas à la caractériser. Il faudrait y ajouter la **latence** des prédictions, un **histogramme des scores** plutôt que le seul verdict binaire, et le **taux d'erreur** de l'API.
+
+Et surtout, une surveillance des **données d'entrée** : c'est là que les dérives commencent, bien avant que la distribution des sorties ne bouge.
